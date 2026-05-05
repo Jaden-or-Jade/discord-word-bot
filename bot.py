@@ -3,7 +3,7 @@ from discord import app_commands
 from collections import Counter
 import re
 
-TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE"
+TOKEN = "MTUwMTMyNjY0NDY4ODcxNTk4OA.GnwpBX.blBl1Az3jD3k7jnqtYHkl0bdwMjFRQJ9NorAjE"
 
 intents = discord.Intents.default()
 intents.message_content = True
