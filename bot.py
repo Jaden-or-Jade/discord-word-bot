@@ -2,8 +2,13 @@ import discord
 from discord import app_commands
 from collections import Counter
 import re
+import os
 
-TOKEN = "MTUwMTMyNjY0NDY4ODcxNTk4OA.GnwpBX.blBl1Az3jD3k7jnqtYHkl0bdwMjFRQJ9NorAjE"
+# Pull token safely from environment variable
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if TOKEN is None:
+    raise ValueError("DISCORD_TOKEN environment variable not set")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -41,8 +46,8 @@ async def topwords(interaction: discord.Interaction):
             del word_counter[word]
 
     top = word_counter.most_common(10)
-    result = "\n".join([f"{w}: {c}" for w, c in top])
+    result = "\n".join([f"{word}: {count}" for word, count in top])
 
-    await interaction.followup.send(result)
+    await interaction.followup.send(f"📊 **Top words:**\n{result}")
 
 client.run(TOKEN)
