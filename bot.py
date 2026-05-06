@@ -300,7 +300,7 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     if not roasts:
         roasts = ["You are aggressively normal."]
 
-    msg = "\n".join(f"🔥 {r}" for r in roasts)
+    msg = "\n".join(roasts)
     msg += f"\n\nDominant archetype: {dominant}"
 
     await interaction.followup.send(msg)
