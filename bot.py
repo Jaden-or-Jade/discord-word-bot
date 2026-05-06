@@ -157,10 +157,14 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
 
     counter = Counter()
 
-    async for message in interaction.channel.history(limit=1000):
+    if user:
+        limit = 3000
+    else:
+        limit = 1000
+    async for message in interaction.channel.history(limit=limit):
         if message.author.bot or not message.content:
             continue
-        if user and message.author != user:
+        if user and message.author.id != user:
             continue
         if cutoff and message.created_at < cutoff:
             continue
