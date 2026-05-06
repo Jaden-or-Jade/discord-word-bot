@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
-from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 import re
 import os
 from dotenv import load_dotenv
@@ -10,33 +10,29 @@ import random
 
 load_dotenv()
 
-# ---------------------------
-# FILES
-# ---------------------------
+TOKEN = os.getenv("DISCORD_TOKEN")
+
 USAGE_FILE = "insult_usage.json"
 ARCHETYPE_FILE = "user_archetypes.json"
-PROFILE_FILE = "user_profiles.json"
 
 # ---------------------------
-# LOAD / SAVE
+# FILE HELPERS
 # ---------------------------
-def load_json(path):
-    if not os.path.exists(path):
+def load_json(file):
+    if not os.path.exists(file):
         return {}
-    with open(path, "r") as f:
+    with open(file, "r") as f:
         return json.load(f)
 
-def save_json(path, data):
-    with open(path, "w") as f:
+def save_json(file, data):
+    with open(file, "w") as f:
         json.dump(data, f, indent=2)
-
 
 insult_usage = load_json(USAGE_FILE)
 user_archetypes = load_json(ARCHETYPE_FILE)
-user_profiles = load_json(PROFILE_FILE)
 
 # ---------------------------
-# ROAST BANK
+# ROAST DATA
 # ---------------------------
 SETUPS = [
     "You communicate like",
@@ -49,12 +45,12 @@ TRAITS = {
     "lol_spammer": [
         "a laugh track that never ends",
         "a sitcom audience that forgot the joke",
-        "someone surviving purely on 'lol'"
+        "someone trying to survive with 'lol' as oxygen"
     ],
     "short_texter": [
-        "a dying battery conserving every character",
+        "a dying battery trying to save power",
         "a Morse code operator on break",
-        "minimalism taken personally"
+        "a minimalist who took it personally"
     ],
     "essay_writer": [
         "a Wikipedia article nobody asked for",
@@ -63,35 +59,31 @@ TRAITS = {
     ],
     "chronically_online": [
         "a notification that never sleeps",
-        "a background app refusing to close",
-        "someone permanently logged in"
+        "a background app that refuses to close",
+        "someone permanently logged into existence"
     ],
     "repetitive_vocabulary": [
         "a broken record with WiFi",
         "a looped voice memo",
-        "a 12-word vocabulary prison"
+        "a dictionary stuck on 12 words"
     ]
 }
 
 CLOSERS = [
     "and honestly it shows.",
-    "respectfully, it's concerning.",
-    "I say this with love (I don't).",
-    "anyway... moving on."
+    "respectfully, it’s concerning.",
+    "I say this with love (I don’t).",
+    "anyway… moving on."
 ]
 
-# ---------------------------
-# ARCHETYPES
-# ---------------------------
 ARCHETYPES = {
-    "meme_gremlin": ["lol_spammer"],
-    "dry_texter": ["short_texter"],
-    "essay_machine": ["essay_writer"],
-    "spammer": ["chronically_online"],
-    "repeater": ["repetitive_vocabulary"]
+    "spammer": 0,
+    "essay_machine": 0,
+    "ghost": 0,
+    "meme_gremlin": 0,
+    "repeater": 0,
+    "dry_texter": 0
 }
-
-ARCHETYPE_DECAY = 0.98
 
 TRAIT_TO_ARCHETYPE = {
     "lol_spammer": "meme_gremlin",
@@ -102,18 +94,16 @@ TRAIT_TO_ARCHETYPE = {
 }
 
 ARCHETYPE_BIASES = {
-    "meme_gremlin": {"lol_spammer": 1.4},
+    "meme_gremlin": {"lol_spammer": 1.5},
     "essay_machine": {"essay_writer": 1.5},
-    "dry_texter": {"short_texter": 1.6},
-    "repeater": {"repetitive_vocabulary": 1.8},
-    "spammer": {"chronically_online": 1.2}
+    "dry_texter": {"short_texter": 1.5},
+    "repeater": {"repetitive_vocabulary": 1.5},
+    "spammer": {"chronically_online": 1.5}
 }
 
 # ---------------------------
-# DISCORD SETUP
+# BOT SETUP
 # ---------------------------
-TOKEN = os.getenv("DISCORD_TOKEN")
-
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -123,7 +113,10 @@ class MyClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        await self.tree.sync()
+        synced = await self.tree.sync()
+        print(f"Synced {len(synced)} commands")
+        for cmd in synced:
+            print(f"- {cmd.name}")
 
 client = MyClient()
 
@@ -132,182 +125,175 @@ async def on_ready():
     print(f"Logged in as {client.user}")
 
 # ---------------------------
-# PROFILE SYSTEM
-# ---------------------------
-def update_profile(user_id, messages, traits):
-
-    if user_id not in user_profiles:
-        user_profiles[user_id] = {
-            "verbosity": 0,
-            "chaos": 0,
-            "repetition": 0,
-            "emotion": 0,
-            "predictability": 1.0
-        }
-
-    p = user_profiles[user_id]
-
-    msg_count = len(messages)
-    avg_len = sum(len(m.split()) for m in messages) / max(msg_count, 1)
-
-    flat = " ".join(messages)
-
-    p["verbosity"] = (p["verbosity"] * 0.9) + (avg_len * 0.1)
-    p["chaos"] += flat.count("lol") + flat.count("!") * 0.5
-
-    words = flat.split()
-    p["repetition"] = 1 - (len(set(words)) / max(len(words), 1))
-
-    p["emotion"] = sum(1 for m in messages if m.isupper()) / max(msg_count, 1)
-
-    p["predictability"] = max(0.1, 1 - p["chaos"] / 50)
-
-    user_profiles[user_id] = p
-    save_json(PROFILE_FILE, user_profiles)
-
-
-# ---------------------------
-# ARCHETYPE SYSTEM
-# ---------------------------
-def update_archetype(user_id, traits):
-
-    if user_id not in user_archetypes:
-        user_archetypes[user_id] = defaultdict(float)
-
-    profile = user_archetypes[user_id]
-
-    # decay old identity
-    for k in list(profile.keys()):
-        profile[k] *= ARCHETYPE_DECAY
-
-    # grow new identity
-    for t in traits:
-        for arch, mapped in ARCHETYPES.items():
-            if t in mapped:
-                profile[arch] += 1
-
-    user_archetypes[user_id] = dict(profile)
-    save_json(ARCHETYPE_FILE, user_archetypes)
-
-
-def get_dominant(user_id):
-    profile = user_archetypes.get(user_id, {})
-    if not profile:
-        return []
-    top = max(profile.values())
-    return [k for k, v in profile.items() if v >= top * 0.7]
-
-
-# ---------------------------
-# ANTI-REPEAT
+# HELPER: SMART PICK
 # ---------------------------
 def pick_least_used(options):
     for o in options:
-        insult_usage.setdefault(o, 0)
+        if o not in insult_usage:
+            insult_usage[o] = 0
 
-    min_v = min(insult_usage[o] for o in options)
-    pool = [o for o in options if insult_usage[o] == min_v]
-    return random.choice(pool)
-
+    min_count = min(insult_usage[o] for o in options)
+    choices = [o for o in options if insult_usage[o] == min_count]
+    return random.choice(choices)
 
 # ---------------------------
-# ROAST COMMAND
+# /TOPWORDS
 # ---------------------------
-@client.tree.command(name="roast", description="Roast a user based on behavior patterns")
+@client.tree.command(name="topwords", description="Get most used words")
+@app_commands.describe(user="Optional user", range="100, 7d, 30d")
+async def topwords(interaction: discord.Interaction, user: discord.Member = None, range: str = "1000"):
+    await interaction.response.defer(thinking=True)
+
+    now = datetime.now(timezone.utc)
+
+    if range == "100":
+        cutoff = now - timedelta(hours=1)
+    elif range == "7d":
+        cutoff = now - timedelta(days=7)
+    elif range == "30d":
+        cutoff = now - timedelta(days=30)
+    else:
+        cutoff = None
+
+    counter = Counter()
+
+    async for message in interaction.channel.history(limit=1000):
+        if message.author.bot or not message.content:
+            continue
+        if user and message.author != user:
+            continue
+        if cutoff and message.created_at < cutoff:
+            continue
+
+        words = re.findall(r'\b\w+\b', message.content.lower())
+        counter.update(words)
+
+    stopwords = {"the","and","is","to","a","of","in","it","for","on","you","i"}
+    filtered = Counter({w: c for w, c in counter.items() if w not in stopwords})
+
+    result = "\n".join(f"{w}: {c}" for w, c in filtered.most_common(10)) or "No data"
+
+    await interaction.followup.send(result)
+
+# ---------------------------
+# /ROAST
+# ---------------------------
+@client.tree.command(name="roast", description="Roast a user")
 async def roast(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(thinking=True)
 
-    user_messages = []
-    server_messages = []
+    user_msgs = []
+    server_msgs = []
 
-    async for msg in interaction.channel.history(limit=1000):
-        if msg.author.bot or not msg.content:
+    async for m in interaction.channel.history(limit=1000):
+        if m.author.bot or not m.content:
             continue
+        text = m.content.lower()
+        server_msgs.append(text)
+        if m.author == user:
+            user_msgs.append(text)
 
-        text = msg.content.lower()
-        server_messages.append(text)
-
-        if msg.author == user:
-            user_messages.append(text)
-
-    if not user_messages:
-        await interaction.followup.send("Too little data 😭")
+    if not user_msgs:
+        await interaction.followup.send("No data to roast 😭")
         return
 
-    user_words = sum(len(m.split()) for m in user_messages)
-    server_words = sum(len(m.split()) for m in server_messages)
+    flat = " ".join(user_msgs)
 
-    user_avg = user_words / max(len(user_messages), 1)
-    server_avg = server_words / max(len(server_messages), 1)
+    user_avg = sum(len(m.split()) for m in user_msgs) / len(user_msgs)
+    server_avg = sum(len(m.split()) for m in server_msgs) / len(server_msgs)
 
-    flat = " ".join(user_messages)
+    # --- trait scoring ---
+    trait_scores = {
+        "lol_spammer": int("lol" in flat),
+        "short_texter": int(user_avg < server_avg * 0.6),
+        "essay_writer": int(user_avg > server_avg * 1.5),
+        "chronically_online": int(len(user_msgs) > len(server_msgs) * 0.3),
+        "repetitive_vocabulary": int(len(set(flat.split())) < 20)
+    }
 
-    # ---------------------------
-    # TRAITS
-    # ---------------------------
-    traits = []
+    user_id = str(user.id)
 
-    if "lol" in flat:
-        traits.append("lol_spammer")
+    if user_id not in user_archetypes:
+        user_archetypes[user_id] = {k: 0 for k in ARCHETYPES}
 
-    if user_avg < server_avg * 0.6:
-        traits.append("short_texter")
+    dominant = max(user_archetypes[user_id], key=user_archetypes[user_id].get)
 
-    if user_avg > server_avg * 1.5:
-        traits.append("essay_writer")
+    # apply bias
+    if dominant in ARCHETYPE_BIASES:
+        for t, mult in ARCHETYPE_BIASES[dominant].items():
+            trait_scores[t] *= mult
 
-    if len(user_messages) > len(server_messages) * 0.3:
-        traits.append("chronically_online")
+    traits = [t for t, s in trait_scores.items() if s >= 1]
 
-    if len(set(flat.split())) < 20:
-        traits.append("repetitive_vocabulary")
-
-    # ---------------------------
-    # EVOLUTION
-    # ---------------------------
-    update_archetype(str(user.id), traits)
-    update_profile(str(user.id), user_messages, traits)
-
-    dominant = get_dominant(str(user.id))
-
-    # ---------------------------
-    # ROAST GENERATION
-    # ---------------------------
-    roasts = []
-
+    # update archetypes
     for t in traits:
-        if t in TRAITS:
-            setup = pick_least_used(SETUPS)
-            trait = pick_least_used(TRAITS[t])
-            closer = pick_least_used(CLOSERS)
+        if t in TRAIT_TO_ARCHETYPE:
+            arch = TRAIT_TO_ARCHETYPE[t]
+            user_archetypes[user_id][arch] += 1
 
-            insult_usage[setup] += 1
-            insult_usage[trait] += 1
-            insult_usage[closer] += 1
+    save_json(ARCHETYPE_FILE, user_archetypes)
 
-            roasts.append(f"{setup} {trait} {closer}")
+    # generate roasts
+    roasts = []
+    for t in traits:
+        setup = pick_least_used(SETUPS)
+        trait = pick_least_used(TRAITS[t])
+        closer = pick_least_used(CLOSERS)
+
+        insult_usage[setup] += 1
+        insult_usage[trait] += 1
+        insult_usage[closer] += 1
+
+        roasts.append(f"{setup} {trait} {closer}")
 
     save_json(USAGE_FILE, insult_usage)
 
     if not roasts:
-        roasts.append("You are so normal it's actually suspicious.")
+        roasts = ["You are aggressively normal."]
 
-    profile = user_profiles.get(str(user.id), {})
+    msg = "\n".join(f"🔥 {r}" for r in roasts)
+    msg += f"\n\nDominant archetype: {dominant}"
 
-    if profile:
-        roasts.append(
-            f"\n🧠 Profile: chaos={profile['chaos']:.1f}, "
-            f"predictability={profile['predictability']:.2f}"
-        )
+    await interaction.followup.send(msg)
 
-    if dominant:
-        roasts.append(f"\n🎭 Archetype: {' + '.join(dominant)}")
+# ---------------------------
+# /SERVERPERSONALITY
+# ---------------------------
+@client.tree.command(name="serverpersonality", description="Analyze server vibe")
+async def serverpersonality(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
 
-    result = "\n".join(f"🔥 {r}" for r in roasts)
-    result += f"\n\nVerdict: {user.display_name} is statistically unstable."
+    msgs = []
 
-    await interaction.followup.send(result)
+    async for m in interaction.channel.history(limit=1000):
+        if m.author.bot or not m.content:
+            continue
+        msgs.append(m.content.lower())
 
+    if not msgs:
+        await interaction.followup.send("Not enough data 😭")
+        return
+
+    text = " ".join(msgs)
+    avg = sum(len(m.split()) for m in msgs) / len(msgs)
+
+    lol = text.count("lol") + text.count("lmao")
+    emoji = len(re.findall(r'[^\w\s]', text))
+
+    chaos = avg < 6 or emoji > len(msgs)
+    meme = lol > len(msgs) * 0.2
+    chill = avg > 12
+
+    if chaos:
+        vibe = "🔥 CHAOTIC"
+    elif meme:
+        vibe = "😂 MEME"
+    elif chill:
+        vibe = "😌 CHILL"
+    else:
+        vibe = "⚖️ BALANCED"
+
+    await interaction.followup.send(f"{vibe}\nAvg length: {avg:.1f}")
 
 # ---------------------------
 # RUN
