@@ -38,42 +38,46 @@ SETUPS = [
     "You communicate like",
     "Your texting style is basically",
     "The way you talk is equivalent to",
-    "If messaging had a difficulty setting, yours would be"
+    "If messaging had a difficulty setting, yours would be",
+    "You're like",
+    "When you talk, it's essentially like"
 ]
 
 TRAITS = {
     "lol_spammer": [
-        "a laugh track that never ends",
-        "a sitcom audience that forgot the joke",
-        "someone trying to survive with 'lol' as oxygen"
+        "a laugh track that never ends.",
+        "a sitcom audience that forgot the joke.",
+        "someone trying to survive with 'lol' as oxygen."
     ],
     "short_texter": [
-        "a dying battery trying to save power",
-        "a Morse code operator on break",
-        "a minimalist who took it personally"
+        "a dying battery trying to save power.",
+        "a Morse code operator on break.",
+        "a minimalist who took it personally."
     ],
     "essay_writer": [
-        "a Wikipedia article nobody asked for",
-        "a courtroom closing statement in Discord form",
-        "a novelist trapped in a group chat"
+        "a Wikipedia article nobody asked for.",
+        "a courtroom closing statement in Discord form.",
+        "a novelist trapped in a group chat."
     ],
     "chronically_online": [
-        "a notification that never sleeps",
-        "a background app that refuses to close",
-        "someone permanently logged into existence"
+        "a notification that never sleeps.",
+        "a background app that refuses to close.",
+        "someone permanently logged into existence."
     ],
     "repetitive_vocabulary": [
-        "a broken record with WiFi",
-        "a looped voice memo",
-        "a dictionary stuck on 12 words"
+        "a broken record with WiFi.",
+        "a looped voice memo.",
+        "a dictionary stuck on 12 words.",
+        "a broken NPC."
     ]
 }
 
 CLOSERS = [
-    "and honestly it shows.",
-    "respectfully, it’s concerning.",
+    "It honestly shows.",
+    "Respectfully, it’s concerning.",
     "I say this with love (I don’t).",
-    "anyway… moving on."
+    "Anyway…moving on.",
+    "You need help."
 ]
 
 ARCHETYPES = {
@@ -99,6 +103,34 @@ ARCHETYPE_BIASES = {
     "dry_texter": {"short_texter": 1.5},
     "repeater": {"repetitive_vocabulary": 1.5},
     "spammer": {"chronically_online": 1.5}
+}
+
+ARCHETYPE_STYLES = {
+    "meme_gremlin": {
+        "emoji": ["💀", "😂", "😭", "💀💀"],
+        "prefix": "",
+        "suffix": " (bro said that unironically 💀)"
+    },
+    "essay_machine": {
+        "emoji": ["📚", "🧠", "📝"],
+        "prefix": "⚠️ ANALYSIS: ",
+        "suffix": ""
+    },
+    "dry_texter": {
+        "emoji": ["."],
+        "prefix": "",
+        "suffix": "."
+    },
+    "repeater": {
+        "emoji": ["🔁", "🔁", "🔁"],
+        "prefix": "",
+        "suffix": " (this is literally all you do)"
+    },
+    "spammer": {
+        "emoji": ["📢", "📢", "📢", "🚨"],
+        "prefix": "🚨 ",
+        "suffix": " — anyway."
+    }
 }
 
 # ---------------------------
@@ -133,6 +165,18 @@ def pick_least_used(options):
     min_count = min(insult_usage[o] for o in options)
     choices = [o for o in options if insult_usage[o] == min_count]
     return random.choice(choices)
+
+def apply_archetype_style(text, archetype):
+    style = ARCHETYPE_STYLES.get(archetype)
+
+    if not style:
+        return f"🔥 {text}"
+
+    emoji = random.choice(style["emoji"])
+    prefix = style["prefix"]
+    suffix = style["suffix"]
+
+    return f"{prefix}{emoji} {text}{suffix}"
 
 # ---------------------------
 # /TOPWORDS
@@ -247,7 +291,9 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
         insult_usage[trait] += 1
         insult_usage[closer] += 1
 
-        roasts.append(f"{setup} {trait} {closer}")
+        raw_roast = f"{setup} {trait} {closer}"
+        styled = apply_archetype_style(raw_roast, dominant)
+        roasts.append(f"{user.mention} {styled}")
 
     save_json(USAGE_FILE, insult_usage)
 
