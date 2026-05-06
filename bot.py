@@ -5,8 +5,68 @@ from datetime import datetime, timedelta, timezone
 import re
 import os
 from dotenv import load_dotenv
+import json
+import random
 
 load_dotenv()
+
+USAGE_FILE = "insult_usage.json"
+
+
+def load_usage():
+    if not os.path.exists(USAGE_FILE):
+        return {}
+    with open(USAGE_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_usage(data):
+    with open(USAGE_FILE, "w") as f:
+        json.dump(data, f)
+
+SETUPS = [
+    "You communicate like",
+    "Your texting style is basically",
+    "The way you talk is equivalent to",
+    "If messaging had a difficulty setting, yours would be"
+]
+
+TRAITS = {
+    "lol_spammer": [
+        "a laugh track that never ends",
+        "a sitcom audience that forgot the joke",
+        "someone trying to survive with 'lol' as oxygen"
+    ],
+    "short_texter": [
+        "a dying battery trying to save power",
+        "a Morse code operator on break",
+        "a minimalist who took it personally"
+    ],
+    "essay_writer": [
+        "a Wikipedia article nobody asked for",
+        "a courtroom closing statement in Discord form",
+        "a novelist trapped in a group chat"
+    ],
+    "chronically_online": [
+        "a notification that never sleeps",
+        "a background app that refuses to close",
+        "someone permanently logged into existence"
+    ],
+    "repetitive_vocabulary": [
+        "a broken record with WiFi",
+        "a looped voice memo",
+        "a dictionary stuck on 12 words"
+    ]
+}
+
+CLOSERS = [
+    "and honestly it shows.",
+    "respectfully, it’s concerning.",
+    "I say this with love (I don’t).",
+    "anyway… moving on."
+]
+
+insult_usage = load_usage()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -88,7 +148,7 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
 
 
 # ---------------------------
-# ROAST COMMAND (NO AI VERSION)
+# ROAST COMMAND
 # ---------------------------
 @client.tree.command(name="roast", description="Roast a user based on their message habits")
 @app_commands.describe(user="The user to roast")
@@ -137,15 +197,33 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     if len(set(flat_text.split())) < 20:
         traits.append("repetitive_vocabulary")
 
-    roast_bank = {
-        "lol_spammer": "You communicate in laughter like it’s a coping mechanism.",
-        "short_texter": "You type like every message costs money.",
-        "essay_writer": "Nobody asked for your paragraph, Aristotle.",
-        "chronically_online": "You are emotionally subscribed to this server.",
-        "repetitive_vocabulary": "Your vocabulary is on a 5-word rotation."
-    }
+def pick_least_used(options):
+    for o in options:
+        if o not in insult_usage:
+            insult_usage[o] = 0
 
-    roasts = [roast_bank[t] for t in traits]
+    min_count = min(insult_usage[o] for o in options)
+    candidates = [o for o in options if insult_usage[o] == min_count]
+
+    return random.choice(candidates)
+
+
+roasts = []
+
+for t in traits:
+    if t in TRAITS:
+        setup = pick_least_used(SETUPS)
+        trait = pick_least_used(TRAITS[t])
+        closer = pick_least_used(CLOSERS)
+
+        insult_usage[setup] += 1
+        insult_usage[trait] += 1
+        insult_usage[closer] += 1
+
+        roast = f"{setup} {trait} {closer}"
+        roasts.append(roast)
+
+save_usage(insult_usage)
 
     if not roasts:
         roasts.append("You are so normal it’s actually suspicious.")
@@ -156,7 +234,7 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     await interaction.followup.send(result)
 
 # ---------------------------
-# SERVER PERSONALITY
+# SERVER PERSONALITY COMMAND
 # ---------------------------
 @client.tree.command(name="serverpersonality", description="Analyze the personality of this server")
 async def serverpersonality(interaction: discord.Interaction):
