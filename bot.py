@@ -115,8 +115,6 @@ class MyClient(discord.Client):
     async def setup_hook(self):
         synced = await self.tree.sync()
         print(f"Synced {len(synced)} commands")
-        for cmd in synced:
-            print(f"- {cmd.name}")
 
 client = MyClient()
 
@@ -125,7 +123,7 @@ async def on_ready():
     print(f"Logged in as {client.user}")
 
 # ---------------------------
-# HELPER: SMART PICK
+# HELPER
 # ---------------------------
 def pick_least_used(options):
     for o in options:
@@ -140,41 +138,43 @@ def pick_least_used(options):
 # /TOPWORDS
 # ---------------------------
 @client.tree.command(name="topwords", description="Get most used words")
-@app_commands.describe(user="Optional user", range="100, 7d, 30d")
 async def topwords(interaction: discord.Interaction, user: discord.Member = None, range: str = "1000"):
     await interaction.response.defer(thinking=True)
 
     now = datetime.now(timezone.utc)
 
+    cutoff = None
     if range == "100":
         cutoff = now - timedelta(hours=1)
     elif range == "7d":
         cutoff = now - timedelta(days=7)
     elif range == "30d":
         cutoff = now - timedelta(days=30)
-    else:
-        cutoff = None
 
     counter = Counter()
 
-    if user:
-        limit = 3000
-    else:
-        limit = 1000
+    limit = 3000 if user else 1000
+
     async for message in interaction.channel.history(limit=limit):
         if message.author.bot or not message.content:
             continue
-        if user and message.author.id != user:
+
+        # FIXED: proper ID comparison
+        if user is not None and message.author.id != user.id:
             continue
+
         if cutoff and message.created_at < cutoff:
             continue
 
         words = re.findall(r'\b\w+\b', message.content.lower())
         counter.update(words)
 
-    stopwords = {"b","c","d","e","f","g","h","j","k","m","n","o","p","q","r","s","t","u","v","w","x","y","z","the","and","is","to","a","of","in","it","for","on","you","i","my","that","like","so","was","me","have"}
-    filtered = Counter({w: c for w, c in counter.items() if w not in stopwords})
+    stopwords = {
+        "b","c","d","e","f","g","h","j","k","m","n","o","p","q","r","s","t","u","v","w","x","y","z",
+        "the","and","is","to","a","of","in","it","for","on","you","i","my","that","like","so","was","me","have"
+    }
 
+    filtered = Counter({w: c for w, c in counter.items() if w not in stopwords})
     result = "\n".join(f"{w}: {c}" for w, c in filtered.most_common(10)) or "No data"
 
     await interaction.followup.send(result)
@@ -192,9 +192,11 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     async for m in interaction.channel.history(limit=1000):
         if m.author.bot or not m.content:
             continue
+
         text = m.content.lower()
         server_msgs.append(text)
-        if m.author == user:
+
+        if m.author.id == user.id:
             user_msgs.append(text)
 
     if not user_msgs:
@@ -206,7 +208,6 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     user_avg = sum(len(m.split()) for m in user_msgs) / len(user_msgs)
     server_avg = sum(len(m.split()) for m in server_msgs) / len(server_msgs)
 
-    # --- trait scoring ---
     trait_scores = {
         "lol_spammer": int("lol" in flat),
         "short_texter": int(user_avg < server_avg * 0.6),
@@ -222,23 +223,21 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
 
     dominant = max(user_archetypes[user_id], key=user_archetypes[user_id].get)
 
-    # apply bias
     if dominant in ARCHETYPE_BIASES:
         for t, mult in ARCHETYPE_BIASES[dominant].items():
             trait_scores[t] *= mult
 
     traits = [t for t, s in trait_scores.items() if s >= 1]
 
-    # update archetypes
     for t in traits:
-        if t in TRAIT_TO_ARCHETYPE:
-            arch = TRAIT_TO_ARCHETYPE[t]
+        arch = TRAIT_TO_ARCHETYPE.get(t)
+        if arch:
             user_archetypes[user_id][arch] += 1
 
     save_json(ARCHETYPE_FILE, user_archetypes)
 
-    # generate roasts
     roasts = []
+
     for t in traits:
         setup = pick_least_used(SETUPS)
         trait = pick_least_used(TRAITS[t])
@@ -284,15 +283,11 @@ async def serverpersonality(interaction: discord.Interaction):
     lol = text.count("lol") + text.count("lmao")
     emoji = len(re.findall(r'[^\w\s]', text))
 
-    chaos = avg < 6 or emoji > len(msgs)
-    meme = lol > len(msgs) * 0.2
-    chill = avg > 12
-
-    if chaos:
+    if avg < 6 or emoji > len(msgs):
         vibe = "🔥 CHAOTIC"
-    elif meme:
+    elif lol > len(msgs) * 0.2:
         vibe = "😂 MEME"
-    elif chill:
+    elif avg > 12:
         vibe = "😌 CHILL"
     else:
         vibe = "⚖️ BALANCED"
