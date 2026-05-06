@@ -168,7 +168,7 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
         words = re.findall(r'\b\w+\b', message.content.lower())
         counter.update(words)
 
-    stopwords = {"the","and","is","to","a","of","in","it","for","on","you","i"}
+    stopwords = {"b","c","d","e","f","g","h","j","k","m","n","o","p","q","r","s","t","u","v","w","x","y","z","the","and","is","to","a","of","in","it","for","on","you","i","my","that","like","so","was","me","have"}
     filtered = Counter({w: c for w, c in counter.items() if w not in stopwords})
 
     result = "\n".join(f"{w}: {c}" for w, c in filtered.most_common(10)) or "No data"
