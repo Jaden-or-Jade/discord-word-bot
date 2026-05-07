@@ -433,32 +433,33 @@ async def roast(
     # ---------------------------
     # GENERATE ROASTS
     # ---------------------------
-    roasts = []
+    best_trait = max(
+    trait_scores,
+    key=trait_scores.get
+)
 
-    for t in traits:
+setup = pick_least_used(SETUPS)
+trait = pick_least_used(TRAITS[best_trait])
+closer = pick_least_used(CLOSERS)
 
-        setup = pick_least_used(SETUPS)
-        trait = pick_least_used(TRAITS[t])
-        closer = pick_least_used(CLOSERS)
+insult_usage[setup] += 1
+insult_usage[trait] += 1
+insult_usage[closer] += 1
 
-        insult_usage[setup] += 1
-        insult_usage[trait] += 1
-        insult_usage[closer] += 1
+raw_roast = (
+    f"{setup} "
+    f"{trait} "
+    f"{closer}"
+)
 
-        raw_roast = (
-            f"{setup} "
-            f"{trait} "
-            f"{closer}"
-        )
+styled = apply_archetype_style(
+    raw_roast,
+    dominant
+)
 
-        styled = apply_archetype_style(
-            raw_roast,
-            dominant
-        )
-
-        roasts.append(
-            f"{user.mention} {styled}"
-        )
+roasts = [
+    f"{user.mention} {styled}"
+]
 
     save_json(
         USAGE_FILE,
