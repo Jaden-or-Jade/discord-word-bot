@@ -265,8 +265,6 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     if user_id not in user_archetypes:
         user_archetypes[user_id] = {k: 0 for k in ARCHETYPES}
 
-    dominant = max(user_archetypes[user_id], key=user_archetypes[user_id].get)
-
     if dominant in ARCHETYPE_BIASES:
         for t, mult in ARCHETYPE_BIASES[dominant].items():
             trait_scores[t] *= mult
@@ -279,6 +277,8 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
             user_archetypes[user_id][arch] += 1
 
     save_json(ARCHETYPE_FILE, user_archetypes)
+
+    dominant = max(user_archetypes[user_id], key=user_archetypes[user_id].get)
 
     roasts = []
 
