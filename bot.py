@@ -46,6 +46,7 @@ STOPWORDS.update(set(string.ascii_letters))
 insult_usage = load_json(USAGE_FILE)
 user_archetypes = load_json(ARCHETYPE_FILE)
 theme_usage = load_json(THEME_USAGE_FILE)
+message_cache = []
 
 # ---------------------------
 # ROAST DATA
@@ -154,6 +155,25 @@ client = MyClient()
 async def on_ready():
     print(f"Logged in as {client.user}")
 
+@client.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if not message.content:
+        return
+
+    message_cache.append({
+
+        "author_id": message.author.id,
+        "content": message.content.lower(),
+        "length": len(message.content),
+        "timestamp": message.created_at.isoformat()
+    })
+
+    if len(message_cache) > 20000:
+        message_cache.pop(0)
+
 # ---------------------------
 # HELPERS
 # ---------------------------
@@ -181,13 +201,11 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
 
     counter = Counter()
 
-    async for m in interaction.channel.history(limit=10000):
-        if m.author.bot or not m.content:
-            continue
-        if user and m.author.id != user.id:
+    for m in message_cache:
+        if user and m["author_id"] != user.id:
             continue
 
-        words = re.findall(r"\b\w+\b", m.content.lower())
+        words = re.findall(r"\b\w+\b", m["content"])
 
         filtered_words = [
             w for w in words
@@ -219,24 +237,20 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     user_msgs = []
     server_msgs = []
 
-    async for m in interaction.channel.history(limit=1000):
-        if m.author.bot or not m.content:
-            continue
+    for m in message_cache:
+        server_msgs.append(m["content"])
 
-        text = m.content.lower()
-        server_msgs.append(text)
-
-        if m.author.id == user.id:
-            user_msgs.append(text)
+        if m["author_id"] == user.id:
+            user_msgs.append(m["content"])
 
     if not user_msgs:
         await interaction.followup.send(f"{user.mention} has no data 😭")
         return
 
     flat = " ".join(user_msgs)
-
     user_avg = sum(len(m.split()) for m in user_msgs) / len(user_msgs)
-    server_avg = sum(len(m.split()) for m in server_msgs) / len(server_msgs)
+
+    server_avg = sum(len(m.split()) for m in server_msgs) / max(len(server_msgs), 1)
     user_activity_ratio = len(user_msgs) / max(len(server_msgs), 1)
 
     trait_scores = {
@@ -278,8 +292,7 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
         for a in user_archetypes[user_id]:
             if a != arch:
                 user_archetypes[user_id][a] = max(
-                0,
-                float(user_archetypes[user_id][a]) * 0.95
+                0, float(user_archetypes[user_id][a]) * 0.95
             )
 
         user_archetypes[user_id][arch] += 1.2
