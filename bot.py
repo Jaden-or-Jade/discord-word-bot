@@ -327,6 +327,10 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
 
     await interaction.followup.send(msg)
 
+@client.tree.command(name="cachecheck")
+    async def cachecheck(interaction: discord.Interaction):
+        await interaction.response.send_message(str(len(message_cache)))
+
 # ---------------------------
 # RUN
 # ---------------------------
