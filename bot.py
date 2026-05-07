@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 import json
 import random
+import string
 
 load_dotenv()
 
@@ -14,6 +15,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 USAGE_FILE = "insult_usage.json"
 ARCHETYPE_FILE = "user_archetypes.json"
+STOPWORDS_FILE = "stopwords.txt"
 
 # ---------------------------
 # FILE HELPERS
@@ -31,6 +33,15 @@ def save_json(file, data):
     with open(file, "w") as f:
         json.dump(data, f, indent=2)
 
+def load_stopwords():
+    if not os.path.exists(STOPWORDS_FILE):
+        return set()
+
+    with open(STOPWORDS_FILE, "r") as f:
+        return {line.strip().lower() for line in f if line.strip()}
+
+STOPWORDS = load_stopwords()
+STOPWORDS.update(set(string.ascii_letters))
 insult_usage = load_json(USAGE_FILE)
 user_archetypes = load_json(ARCHETYPE_FILE)
 
@@ -167,12 +178,26 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
             continue
 
         words = re.findall(r"\b\w+\b", m.content.lower())
-        counter.update(words)
+
+        filtered_words = [
+            w for w in words
+            if w not in STOPWORDS
+        ]
+
+        counter.update(filtered_words)
 
     result = "\n".join(
         f"{w}: {c}" for w, c in counter.most_common(10)
     ) or "No data"
 
+    if user:
+        await interaction.followup.send(
+            f"📊 Top words for {user.mention}\n\n{result}"
+        )
+    else:
+        await interaction.followup.send(
+            f"📊 Top server words\n\n{result}"
+        )
     await interaction.followup.send(result)
 
 # ---------------------------
