@@ -181,7 +181,7 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
 
         filtered_words = [
             w for w in words
-            if w not in STOPWORDS
+            if w.isalpha() and w not in STOPWORDS
         ]
 
         counter.update(filtered_words)
@@ -198,7 +198,6 @@ async def topwords(interaction: discord.Interaction, user: discord.Member = None
         await interaction.followup.send(
             f"📊 Top server words\n\n{result}"
         )
-    await interaction.followup.send(result)
 
 # ---------------------------
 # ROAST (FIXED: SINGLE ROAST ONLY)
