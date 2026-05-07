@@ -16,6 +16,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 USAGE_FILE = "insult_usage.json"
 ARCHETYPE_FILE = "user_archetypes.json"
 STOPWORDS_FILE = "stopwords.txt"
+THEME_USAGE_FILE = "theme_usage.json"
 
 # ---------------------------
 # FILE HELPERS
@@ -44,6 +45,7 @@ STOPWORDS = load_stopwords()
 STOPWORDS.update(set(string.ascii_letters))
 insult_usage = load_json(USAGE_FILE)
 user_archetypes = load_json(ARCHETYPE_FILE)
+theme_usage = load_json(THEME_USAGE_FILE)
 
 # ---------------------------
 # ROAST DATA
@@ -122,6 +124,14 @@ ARCHETYPE_STYLES = {
     "dry_texter": {"emoji": ["."], "prefix": "", "suffix": "."},
     "repeater": {"emoji": ["🔁"], "prefix": "", "suffix": " (repeat behavior detected)"},
     "spammer": {"emoji": ["📢", "🚨"], "prefix": "🚨 ", "suffix": " — anyway."}
+}
+
+TRAIT_THEMES = {
+    "lol_spammer": "addiction_humor",
+    "short_texter": "minimalism_diss",
+    "essay_writer": "overexplainer_joke",
+    "chronically_online": "internet_dependence",
+    "repetitive_vocabulary": "redundancy_joke"
 }
 
 # ---------------------------
@@ -227,12 +237,13 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
 
     user_avg = sum(len(m.split()) for m in user_msgs) / len(user_msgs)
     server_avg = sum(len(m.split()) for m in server_msgs) / len(server_msgs)
+    user_activity_ratio = len(user_msgs) / max(len(server_msgs), 1)
 
     trait_scores = {
         "lol_spammer": int("lol" in flat),
         "short_texter": int(user_avg < server_avg * 0.6),
         "essay_writer": int(user_avg > server_avg * 1.5),
-        "chronically_online": int(len(user_msgs) > len(server_msgs) * 0.3),
+        "chronically_online": int(user_activity_ratio > 0.25),
         "repetitive_vocabulary": int(len(set(flat.split())) < 20)
     }
 
@@ -243,7 +254,16 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
 
     profile = user_archetypes[user_id]
 
-    dominant = max(profile, key=profile.get)
+    max_score = max(profile.values())
+
+    if max_score == 0:
+        dominant = "meme_gremlin"
+    else:
+        candidates = [
+            k for k, v in profile.items()
+            if abs(v - max_score) < 1e-6
+        ]
+        dominant = random.choice(candidates)
 
     if dominant in ARCHETYPE_BIASES:
         for t, mult in ARCHETYPE_BIASES[dominant].items():
@@ -252,21 +272,41 @@ async def roast(interaction: discord.Interaction, user: discord.Member):
     best_trait = max(trait_scores, key=trait_scores.get)
 
     arch = TRAIT_TO_ARCHETYPE.get(best_trait)
+
     if arch:
-        user_archetypes[user_id][arch] += 1
+        # soft update instead of hard +1
+        for a in user_archetypes[user_id]:
+            if a != arch:
+                user_archetypes[user_id][a] = max(
+                0,
+                float(user_archetypes[user_id][a]) * 0.95
+            )
+
+        user_archetypes[user_id][arch] += 1.2
 
     save_json(ARCHETYPE_FILE, user_archetypes)
 
     setup = pick_least_used(SETUPS)
+
+    theme = TRAIT_THEMES.get(best_trait, "default")
+
+    # initialize theme counter safely
+    if theme not in theme_usage:
+        theme_usage[theme] = 0
+
+    # pick trait normally first
     trait = random.choice(TRAITS[best_trait])
-    closer = pick_least_used(CLOSERS)
 
-    insult_usage[setup] = insult_usage.get(setup, 0) + 1
-    insult_usage[trait] = insult_usage.get(trait, 0) + 1
-    insult_usage[closer] = insult_usage.get(closer, 0) + 1
+    # anti-repeat logic (actually does something now)
+    if theme_usage[theme] > 2:
+        if random.random() < 0.5:
+            trait = random.choice(TRAITS[best_trait])
 
-    save_json(USAGE_FILE, insult_usage)
+    # update usage AFTER selection
+    theme_usage[theme] = theme_usage.get(theme, 0) + 1
+    save_json(THEME_USAGE_FILE, theme_usage)
 
+    closer = random.choice(CLOSERS)
     raw = f"{setup} {trait} {closer}"
     final = style(raw, dominant)
 
